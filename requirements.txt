@@ -1,0 +1,23 @@
+# Web Framework & Validation
+fastapi==0.110.0
+pydantic==2.6.3
+pydantic-settings==2.2.1
+uvicorn[standard]==0.27.1
+orjson==3.9.15
+
+# Database & Cache
+sqlalchemy==2.0.27
+asyncpg==0.29.0
+alembic==1.13.1
+redis==5.0.1
+
+# Machine Learning & Data
+pandas==2.2.1
+numpy==1.26.4
+catboost==1.2.3
+scikit-learn==1.4.1.post1
+shap==0.45.0
+imbalanced-learn==0.12.0
+
+# Observability
+structlog==24.1.0
