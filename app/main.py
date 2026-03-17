@@ -1,62 +1,81 @@
+"""
+Main entry point for the AI Behavioral Anti-Fraud Service.
+Orchestrates application lifespan and registers core API routes.
+"""
+
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+import structlog
+from catboost import CatBoostClassifier
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
-import structlog
 
 from app.core.config import settings
-from app.api.v1 import scoring  # <-- ДОБАВЛЕНО: Импорт роутера строго наверху файла
+from app.core.state import ml_models
+from app.api.v1 import scoring
 
-logger = structlog.get_logger()
-
-# Глобальный словарь для хранения тяжелых ML-моделей в оперативной памяти (O(1) доступ)
-ml_models = {}
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Управляет жизненным циклом приложения (Startup / Shutdown).
-    Гарантирует, что модели загружены в RAM до того, как API начнет принимать трафик.
-    """
-    logger.info("Initializing AI Anti-Fraud API...", version=settings.VERSION)
-
+    logger.info("initializing_api", version=settings.VERSION)
     try:
-        # TODO: Загрузка моделей CatBoost и IsolationForest
-        # Временно ставим заглушку, пока вы не скачаете обученные модели из Kaggle
-        logger.info("ML Models loaded into RAM successfully.")
-        yield
+        # Улучшенный резолв путей
+        base_dir = Path(__file__).resolve().parents[1]
+        model_path = base_dir / "ml_artifacts" / "core_scorer.cbm"
+
+        if not model_path.exists():
+            # На защите важно, чтобы модель БЫЛА, поэтому тут лучше кинуть ошибку
+            logger.error("model_artifact_missing", path=str(model_path))
+            raise FileNotFoundError(f"Model missing: {model_path}")
+
+        logger.info("loading_model_into_ram", model_path=str(model_path))
+        model = CatBoostClassifier()
+        model.load_model(str(model_path))
+
+        # Ключ теперь синхронизирован
+        ml_models["core_scorer"] = model
+        logger.info("ml_models_loaded_successfully")
+
+        yield  # Сервер готов к работе
+
     except Exception as e:
-        logger.error("CRITICAL: Failed to load ML models!", error=str(e))
-        raise
+        logger.exception("critical_startup_failure", error=str(e))
+        # Не делаем yield здесь, чтобы FastAPI не стартовал с битой моделью
+        raise SystemExit(1)
     finally:
-        # Выполняется при выключении сервера (освобождаем память)
+        logger.info("shutting_down_api", action="clearing_ml_models")
         ml_models.clear()
-        logger.info("Anti-Fraud API shut down gracefully. RAM cleared.")
 
 
-# Инициализация сверхбыстрого FastAPI инстанса
+# Initialize high-performance FastAPI instance
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url="/docs",  # Swagger UI для комиссии
-    redoc_url=None,  # Отключаем лишнее для скорости
+    docs_url="/docs",
+    redoc_url=None,
     lifespan=lifespan,
-    default_response_class=ORJSONResponse,  # orjson работает в разы быстрее стандартного json
+    default_response_class=ORJSONResponse,
 )
 
-# <-- ДОБАВЛЕНО: Регистрируем наш боевой эндпоинт в ядре FastAPI
+# Register the scoring engine router
 app.include_router(scoring.router, prefix=settings.API_V1_STR, tags=["Scoring Engine"])
 
 
 @app.get("/health", tags=["System Observability"])
-async def health_check():
+async def health_check() -> dict:
     """
-    Эндпоинт для Docker и Kubernetes.
-    Проверяет, жив ли сервис.
+    Liveness probe for orchestration tools (Docker/Kubernetes).
+    Checks if the system is operational and ML models are active in RAM.
     """
+    is_model_loaded = "core_scorer" in ml_models
     return {
         "status": "operational",
         "version": settings.VERSION,
-        "models_loaded": len(ml_models) == 0,  # Пока 0, так как стоит заглушка
+        "models_loaded": is_model_loaded,
+        "environment": os.getenv("ENV", "development"),
     }
