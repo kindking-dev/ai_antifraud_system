@@ -4,6 +4,7 @@ from fastapi.responses import ORJSONResponse
 import structlog
 
 from app.core.config import settings
+from app.api.v1 import scoring  # <-- ДОБАВЛЕНО: Импорт роутера строго наверху файла
 
 logger = structlog.get_logger()
 
@@ -22,8 +23,6 @@ async def lifespan(app: FastAPI):
     try:
         # TODO: Загрузка моделей CatBoost и IsolationForest
         # Временно ставим заглушку, пока вы не скачаете обученные модели из Kaggle
-        # ml_models["core_scorer"] = CatBoostClassifier().load_model("ml_artifacts/catboost_core_v1.cbm")
-
         logger.info("ML Models loaded into RAM successfully.")
         yield
     except Exception as e:
@@ -45,6 +44,9 @@ app = FastAPI(
     lifespan=lifespan,
     default_response_class=ORJSONResponse,  # orjson работает в разы быстрее стандартного json
 )
+
+# <-- ДОБАВЛЕНО: Регистрируем наш боевой эндпоинт в ядре FastAPI
+app.include_router(scoring.router, prefix=settings.API_V1_STR, tags=["Scoring Engine"])
 
 
 @app.get("/health", tags=["System Observability"])

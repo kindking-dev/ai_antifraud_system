@@ -1,24 +1,19 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, IPvAnyAddress
 
 
 class TransactionSource(str, Enum):
-    """Каналы поступления транзакций."""
-
-    MOBILE_APP = "mobile_app"
-    WEB_BROWSER = "web_browser"
-    API_B2B = "api_b2b"
+    MOBILE_APP = "MOBILE_APP"
+    WEB = "WEB"
+    API = "API"
 
 
 class BiometricSensors(BaseModel):
-    """
-    Инновация 1: Sensor Fusion & Behavioral Biometrics.
-    Телеметрия с датчиков телефона для защиты от RAT (Remote Access Trojans) и эмуляторов.
-    """
+    """Инновация 1: Sensor Fusion & Behavioral Biometrics."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid")
 
     gyroscope_x_y_z: List[float] = Field(
         ...,
@@ -29,55 +24,48 @@ class BiometricSensors(BaseModel):
     keystroke_entropy: float = Field(
         ...,
         ge=0.0,
-        description="Энтропия ритма печати (защита от скриптов автозаполнения)",
+        description="Энтропия ритма печати",
     )
     touch_pressure_variance: Optional[float] = Field(
         None,
-        description="Дисперсия силы нажатия на экран (опционально, зависит от экрана)",
+        description="Дисперсия силы нажатия на экран",
     )
 
 
 class NetworkIdentity(BaseModel):
-    """
-    Инновация 2: Network-Layer Fingerprinting.
-    Криптографическая проверка сетевого пакета.
-    """
+    """Инновация 2: Network-Layer Fingerprinting."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid")
 
     ip_address: IPvAnyAddress
     ja3_fingerprint: str = Field(
         ...,
         min_length=32,
         max_length=32,
-        description="MD5 хеш TLS-рукопожатия. Отсеивает ботнеты.",
+        description="MD5 хеш TLS-рукопожатия.",
     )
     user_agent: str
     is_vpn_or_proxy: bool = Field(default=False)
 
 
 class FraudAnalysisRequest(BaseModel):
-    """
-    Главный контракт для эндпоинта /v1/score-transaction.
-    Написан на Rust (под капотом Pydantic V2) для валидации за <1ms.
-    """
+    """Главный контракт для эндпоинта /v1/score-transaction."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid")
 
     transaction_id: str = Field(..., min_length=5, max_length=50)
     user_id: str = Field(..., description="Уникальный ID клиента в системе банка")
     amount_kzt: float = Field(..., gt=0.0, description="Сумма транзакции в тенге")
 
-    # Метаданные транзакции
     source: TransactionSource
     network: NetworkIdentity
     biometrics: Optional[BiometricSensors] = None
 
-    # Инновация 3: Continuous Authentication
     session_trust_score: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Индекс доверия к текущей сессии (падает при аномалиях)",
+        description="Индекс доверия к текущей сессии",
     )
-    timestamp_utc: datetime = Field(default_factory=datetime.utcnow)
+    # Используем timezone.utc вместо deprecated datetime.utcnow()
+    timestamp_utc: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
