@@ -10,7 +10,6 @@ from pathlib import Path
 import structlog
 from catboost import CatBoostClassifier
 from fastapi import FastAPI
-from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings
 from app.core.state import ml_models
@@ -38,6 +37,14 @@ async def lifespan(app: FastAPI):
 
         # Ключ теперь синхронизирован
         ml_models["core_scorer"] = model
+        # --- Прогрев модели (Warm-up) ---
+        logger.info("warming_up_model")
+        dummy_vector = [[0.0] * 11]  # Создаем пустой вектор из 11 признаков
+        for _ in range(5):
+            model.predict_proba(
+                dummy_vector
+            )  # Заставляем процессор закэшировать инструкции
+        logger.info("model_warmup_complete")
         logger.info("ml_models_loaded_successfully")
 
         yield  # Сервер готов к работе
@@ -59,7 +66,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url=None,
     lifespan=lifespan,
-    default_response_class=ORJSONResponse,
 )
 
 # Register the scoring engine router

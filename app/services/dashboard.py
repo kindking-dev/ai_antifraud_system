@@ -81,7 +81,7 @@ with col1:
             ]
             if c in df.columns
         ]
-        st.dataframe(df[cols], use_container_width=True, hide_index=True)
+        st.dataframe(df[cols], width="stretch", hide_index=True)
     else:
         st.info("System standby. Send a transaction to begin.")
 
@@ -107,6 +107,6 @@ with col2:
                     },
                 )
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             for code in latest.get("reason_codes", []):
                 st.warning(f"⚠️ {code}")
