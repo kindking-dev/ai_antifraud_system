@@ -1,7 +1,8 @@
 version: '3.8'
 
 services:
-  postgres:
+  # --- DATABASE: Audit Trail Storage ---
+  db:
     image: postgres:16-alpine
     container_name: antifraud_db
     environment:
@@ -9,14 +10,20 @@ services:
       POSTGRES_PASSWORD: secretpassword
       POSTGRES_DB: antifraud_db
     ports:
-      - "5432:5432"
+      - "5433:5432" # Внешний порт 5433 для DBeaver
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d antifraud_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
+  # --- CACHE: Real-time Feature Store ---
   redis:
     image: redis:7.2-alpine
-    container_name: antifraud_cache
+    container_name: redis-antifraud
     command: redis-server --save 60 1 --loglevel warning
     ports:
       - "6379:6379"
@@ -24,6 +31,23 @@ services:
       - redisdata:/data
     restart: always
 
+  # --- MONITORING: Enterprise Dashboard ---
+  grafana:
+    image: grafana/grafana:latest
+    container_name: antifraud_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Пароль для входа в Grafana
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
 volumes:
   pgdata:
   redisdata:
+  grafanadata:

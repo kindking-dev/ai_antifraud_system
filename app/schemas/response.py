@@ -1,9 +1,10 @@
 """
 API Response Schemas for Fraud Analysis.
 Ensures strict validation of output data using Pydantic V2.
+Updated to support SHAP Feature Impact visualization.
 """
 
-from typing import List
+from typing import List, Dict
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -29,6 +30,11 @@ class ReasonCode(str, Enum):
 
 
 class FraudAnalysisResponse(BaseModel):
+    """
+    Основная схема ответа антифрод-движка.
+    Включает XAI-компоненты для обеспечения прозрачности (Explainability).
+    """
+
     model_config = ConfigDict(strict=True)
 
     transaction_id: str = Field(..., description="Unique transaction reference")
@@ -39,6 +45,13 @@ class FraudAnalysisResponse(BaseModel):
     reason_codes: List[ReasonCode] = Field(
         default_factory=list, description="List of SHAP-derived triggers"
     )
+
+    # НОВОЕ ПОЛЕ ДЛЯ ЗАДАЧИ №5
+    feature_impacts: Dict[str, float] = Field(
+        default_factory=dict,
+        description="SHAP weights for each input feature for visualization",
+    )
+
     processing_time_ms: float = Field(
         ..., description="Total inference latency (SLA < 50ms)"
     )
