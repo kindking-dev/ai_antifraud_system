@@ -1,35 +1,38 @@
 import random
 import uuid
-from datetime import datetime, UTC
+import hashlib
+from datetime import datetime, timezone
 from locust import HttpUser, task, between
 
 
-class RealWorldBankSimulator(HttpUser):
-    # Увеличиваем паузу, чтобы обычные юзеры НЕ блокировались по скорости
-    wait_time = between(10.0, 30.0)
+class AntiFraudRealWorldSimulator(HttpUser):
+    # Имитируем реальное время раздумья человека (от 10 до 20 секунд)
+    wait_time = between(10.0, 20.0)
 
     def on_start(self):
-        # Огромный пул ID, чтобы имитировать базу большого города
-        self.headers = {"X-API-KEY": "DEV-MASTER-KEY"}
+        """Вызывается при старте каждого виртуального юзера."""
+        self.headers = {
+            "Content-Type": "application/json",
+            "X-API-KEY": "DEV-MASTER-KEY",
+        }
 
-    @task(90)  # 90% - НОРМАЛЬНЫЕ ЛЮДИ
-    def clean_customer(self):
-        user_id = f"USR-CLEAN-{random.randint(10000, 99999)}"
-        payload = self._build_payload(user_id, is_fraud=False)
+    @task(85)  # 85% - Обычные клиенты (Нормальное поведение)
+    def normal_customer(self):
+        user_id = f"USR-{random.randint(10000, 99999)}"
+        payload = self._build_payload(user_id, profile="CLEAN")
         self.client.post(
             "/v1/score-transaction",
             json=payload,
             headers=self.headers,
-            name="01_Normal_Payment",
+            name="01_Normal_User",
         )
 
-    @task(7)  # 7% - КАРДИНГ (Всплеск частоты)
+    @task(10)  # 10% - Атака на скорость (Velocity / Carding)
     def velocity_attacker(self):
-        # Один и тот же юзер делает покупку каждые 0.5 сек
-        user_id = "ATTACKER-VELOCITY-999"
-        payload = self._build_payload(user_id, is_fraud=False)
-        # У этой задачи НЕТ ожидания, она бьет быстро
+        # Один и тот же злоумышленник "долбит" систему 5 раз подряд
+        attacker_id = "ATTACKER-VELOCITY-001"
         for _ in range(5):
+            payload = self._build_payload(attacker_id, profile="VELOCITY")
             self.client.post(
                 "/v1/score-transaction",
                 json=payload,
@@ -37,36 +40,59 @@ class RealWorldBankSimulator(HttpUser):
                 name="02_Velocity_Attack",
             )
 
-    @task(3)  # 3% - БОТ-АТАКА (Аномальная биометрия)
-    def biometric_bot(self):
-        user_id = f"BOT-{uuid.uuid4().hex[:5]}"
-        payload = self._build_payload(user_id, is_fraud=True)
+    @task(5)  # 5% - Продвинутый фрод (Аномальная биометрия)
+    def advanced_fraud_bot(self):
+        user_id = f"BOT-{uuid.uuid4().hex[:5].upper()}"
+        payload = self._build_payload(user_id, profile="FRAUD_BOT")
         self.client.post(
             "/v1/score-transaction",
             json=payload,
             headers=self.headers,
-            name="03_Bot_Anomalous_Biometrics",
+            name="03_Biometric_Bot_Attack",
         )
 
-    def _build_payload(self, user_id, is_fraud):
+    def _build_payload(self, user_id, profile):
+        # 1. Генерируем JA3 хеш ровно 32 символа (требование твоей модели)
+        ja3 = hashlib.md5(user_id.encode()).hexdigest()
+
+        # 2. Логика в зависимости от профиля
+        is_fraud = profile in ["VELOCITY", "FRAUD_BOT"]
+
+        # Для ботов биометрия "мёртвая" (нули), для людей - живая
+        if profile == "FRAUD_BOT":
+            biometrics = {
+                "gyroscope_x_y_z": [0.0, 0.0, 0.0],
+                "keystroke_entropy": 0.01,
+                "touch_pressure_variance": 0.001,
+            }
+            amount = float(random.randint(500000, 1500000))
+            trust = 0.05
+        else:
+            biometrics = {
+                "gyroscope_x_y_z": [
+                    round(random.uniform(0.1, 0.8), 2) for _ in range(3)
+                ],
+                "keystroke_entropy": round(random.uniform(0.6, 0.9), 2),
+                "touch_pressure_variance": round(random.uniform(0.1, 0.3), 2),
+            }
+            amount = float(random.randint(500, 45000))
+            trust = 0.98
+
+        # Собираем финальный JSON строго по твоей схеме Pydantic
         return {
-            "transaction_id": f"TXN-{uuid.uuid4().hex[:8].upper()}",
+            "transaction_id": f"TXN-{uuid.uuid4().hex[:15].upper()}",
             "user_id": user_id,
-            "amount_kzt": random.uniform(200000, 1000000)
-            if is_fraud
-            else random.uniform(500, 50000),
-            "source": "MOBILE_APP",
-            "session_trust_score": 0.05 if is_fraud else 0.98,
+            "amount_kzt": amount,
+            "source": "MOBILE_APP" if profile != "FRAUD_BOT" else "API",
             "network": {
-                "ip_address": "1.1.1.1",
+                "ip_address": f"{random.randint(1, 255)}.{random.randint(1, 255)}.1.1",
+                "ja3_fingerprint": ja3,
+                "user_agent": "iPhone/Safari"
+                if not is_fraud
+                else "Python/Requests-Bot",
                 "is_vpn_or_proxy": is_fraud,
-                "ja3_fingerprint": "xyz",
-                "user_agent": "Bot" if is_fraud else "iPhone",
             },
-            "biometrics": {
-                "gyroscope_x_y_z": [0.01, 0.01, 0.01] if is_fraud else [0.4, 0.7, 0.2],
-                "keystroke_entropy": 0.1 if is_fraud else 0.8,
-                "touch_pressure_variance": 0.02 if is_fraud else 0.18,
-            },
-            "timestamp_utc": datetime.now(UTC).isoformat(),
+            "biometrics": biometrics,
+            "session_trust_score": trust,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         }
