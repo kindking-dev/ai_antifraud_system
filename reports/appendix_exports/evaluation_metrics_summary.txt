@@ -1,0 +1,22 @@
+========================================================================
+SENTINEL AI: CORE ML EVALUATION METRICS REPORT (ACADEMIC THESIS FORMAT)
+========================================================================
+
+The model evaluation was performed on a holdout test partition containing
+118,108 banking transactions, structured with extreme class imbalance
+(Fraud Ratio: 3.44%).
+
+  - ROC-AUC Score                : 0.840155
+  - Precision-Recall AUC (PR-AUC) : 0.395318
+  - Selected Classification Thresh: 0.446522
+  - Recall at Thresh (Sensitivity): 70.0000%
+  - Precision at Thresh (PPV)    : 13.7600%
+  - False Positive Rate (FPR)    : 15.6400%
+  - CatBoost Model Best Iteration: 1279
+
+Confusion Matrix Coordinates:
+-----------------------------
+  - True Negatives (TN)  : 96,206
+  - False Positives (FP) : 17,838
+  - False Negatives (FN) : 1,219
+  - True Positives (TP)  : 2,845

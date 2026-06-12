@@ -1,0 +1,14 @@
+{
+  "transaction_id": "TXN-2830",
+  "action": "BLOCK",
+  "fraud_probability": 0.911,
+  "reason_codes": [
+    "SUSPICIOUS_BEHAVIOR",
+    "HIGH_ML_RISK"
+  ],
+  "feature_impacts": {
+    "behavior_score_impact": 0.7715,
+    "tx_model_impact": 0.911
+  },
+  "processing_time_ms": 14.85
+}

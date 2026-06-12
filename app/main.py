@@ -1,87 +1,161 @@
 """
-Main entry point for the AI Behavioral Anti-Fraud Service.
-Orchestrates application lifespan and registers core API routes.
+AI-POWERED BEHAVIORAL ANTI-FRAUD SERVICE: Main Application Entrypoint.
+Handles App Lifespan, Middleware, Redis Pooling, ML Warmup, and XAI Routing.
 """
 
-import os
+import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
+from typing import Dict, Any
 
 import structlog
-from catboost import CatBoostClassifier
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
-from app.core.state import ml_models
-from app.api.v1 import scoring
+from app.core.config import settings, validate_settings
+# Импортируем оба роутера: горячий путь (scoring) и холодный путь аналитики (explain)
+from app.api.v1 import scoring, explain
+from app.repositories.redis_store import RedisStore
 
+# Импортируем ML-логику для проверки и прогрева
+from app.ml.inference.transaction_inference import predict_transaction_model, MODEL_LOADED, feature_builder
+
+# =========================
+# LOGGING SETUP (FAANG Standard)
+# =========================
+logging.basicConfig(level=settings.LOG_LEVEL, format=settings.LOG_FORMAT)
+
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
 logger = structlog.get_logger(__name__)
 
 
+# =========================
+# LIFESPAN (RESOURCE MANAGEMENT)
+# =========================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("initializing_api", version=settings.VERSION)
+    """
+    Управляет жизненным циклом приложения:
+    1. Валидирует конфиг.
+    2. Проверяет готовность ML-артефактов.
+    3. Инициализирует пул соединений Redis.
+    4. Прогревает модель (Warmup) для устранения Cold Start.
+    """
+    logger.info("startup_begin", version=settings.VERSION)
+
     try:
-        # Улучшенный резолв путей
-        base_dir = Path(__file__).resolve().parents[1]
-        model_path = base_dir / "ml_artifacts" / "core_scorer.cbm"
+        # 1. Валидация окружения
+        validate_settings()
 
-        if not model_path.exists():
-            # На защите важно, чтобы модель БЫЛА, поэтому тут лучше кинуть ошибку
-            logger.error("model_artifact_missing", path=str(model_path))
-            raise FileNotFoundError(f"Model missing: {model_path}")
+        # 2. Проверка ML-подсистемы
+        if not MODEL_LOADED or not feature_builder.is_ready:
+            logger.error("ml_system_offline", reason="CatBoost or Builder artifacts missing")
+            raise RuntimeError("ML System failed to initialize. Check ml_artifacts folder.")
+        
+        logger.info("ml_system_ready", features_count=len(feature_builder.feature_columns))
 
-        logger.info("loading_model_into_ram", model_path=str(model_path))
-        model = CatBoostClassifier()
-        model.load_model(str(model_path))
+        # 3. Инициализация Redis
+        app.state.redis_store = RedisStore(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            socket_timeout=settings.REDIS_SOCKET_TIMEOUT
+        )
+        logger.info("redis_initialized", host=settings.REDIS_HOST)
 
-        # Ключ теперь синхронизирован
-        ml_models["core_scorer"] = model
-        # --- Прогрев модели (Warm-up) ---
-        logger.info("warming_up_model")
-        dummy_vector = [[0.0] * 11]  # Создаем пустой вектор из 11 признаков
-        for _ in range(5):
-            model.predict_proba(
-                dummy_vector
-            )  # Заставляем процессор закэшировать инструкции
-        logger.info("model_warmup_complete")
-        logger.info("ml_models_loaded_successfully")
+        # 4. Интеллектуальный прогрев модели (Model Warmup)
+        try:
+            warmup_payload: Dict[str, Any] = {
+                "transaction_id": "warmup_001",
+                "user_id": "system_warmup",
+                "amount_kzt": 1000.0,
+                "timestamp_utc": "2026-04-30T12:00:00",
+                "card1": "1234",
+                "addr1": "100"
+            }
+            
+            for _ in range(5):
+                predict_transaction_model(warmup_payload, behavior_score=0.5)
+                
+            logger.info("model_warmed_up", status="success")
+        except Exception as warmup_err:
+            logger.warning("warmup_failed", error=str(warmup_err))
 
-        yield  # Сервер готов к работе
+        logger.info("startup_complete", status="listening")
+        yield
 
     except Exception as e:
-        logger.exception("critical_startup_failure", error=str(e))
-        # Не делаем yield здесь, чтобы FastAPI не стартовал с битой моделью
+        logger.exception("startup_failed", error=str(e))
         raise SystemExit(1)
+    
     finally:
-        logger.info("shutting_down_api", action="clearing_ml_models")
-        ml_models.clear()
+        logger.info("shutdown_begin")
+        if hasattr(app.state, "redis_store"):
+            await app.state.redis_store.close()
+            
+        logger.info("shutdown_complete")
 
 
-# Initialize high-performance FastAPI instance
+# =========================
+# FASTAPI APP INSTANCE
+# =========================
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
+    description="AI-Powered Behavioral Anti-Fraud Service - Dual-Engine Fraud Detection System with Local LLM",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs",
-    redoc_url=None,
     lifespan=lifespan,
 )
 
-# Register the scoring engine router
-app.include_router(scoring.router, prefix=settings.API_V1_STR, tags=["Scoring Engine"])
+# =========================
+# MIDDLEWARE
+# =========================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =========================
+# ROUTERS
+# =========================
+# 1. Hot Path: Основной скоринг (SLA < 50ms)
+app.include_router(
+    scoring.router,
+    prefix=settings.API_V1_STR,
+    tags=["Scoring Engine"],
+)
+
+# 2. Cold Path: Аналитика XAI через локальную нейросеть
+app.include_router(
+    explain.router,
+    prefix=settings.API_V1_STR,
+    # Теги уже определены внутри самого роутера
+)
 
 
-@app.get("/health", tags=["System Observability"])
-async def health_check() -> dict:
+# =========================
+# SYSTEM ENDPOINTS
+# =========================
+@app.get("/health", tags=["System"])
+async def health_check():
     """
-    Liveness probe for orchestration tools (Docker/Kubernetes).
-    Checks if the system is operational and ML models are active in RAM.
+    Проверка работоспособности системы.
+    Возвращает статус готовности ML и Redis.
     """
-    is_model_loaded = "core_scorer" in ml_models
     return {
         "status": "operational",
         "version": settings.VERSION,
-        "models_loaded": is_model_loaded,
-        "environment": os.getenv("ENV", "development"),
+        "ml_engine_ready": MODEL_LOADED and feature_builder.is_ready,
+        "redis_active": hasattr(app.state, "redis_store")
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

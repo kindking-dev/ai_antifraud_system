@@ -1,0 +1,23 @@
+{
+  "transaction_id": "TXN-2830",
+  "user_id": "usr_id_002830",
+  "amount_kzt": 644.0,
+  "source": "MOBILE_APP",
+  "session_trust_score": 0.95,
+  "network": {
+    "ip_address": "195.88.24.102",
+    "ja3_fingerprint": "7c1e54d47534726827e85bca43a7a57a",
+    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15",
+    "is_vpn_or_proxy": false
+  },
+  "biometrics": {
+    "gyroscope_x_y_z": [
+      0.012,
+      -0.045,
+      0.981
+    ],
+    "keystroke_entropy": 2.45,
+    "touch_pressure_variance": 0.034
+  },
+  "timestamp_utc": "2026-06-03T17:25:23.349533+00:00"
+}

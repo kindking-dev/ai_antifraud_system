@@ -1,7 +1,63 @@
-version: '3.8'
-
 services:
-  # --- DATABASE: Audit Trail Storage ---
+  # 0. NGINX шлюз (Объединяет Frontend и API на одном порту 8080)
+  nginx:
+    image: nginx:alpine
+    container_name: antifraud_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend/mobile:/usr/share/nginx/html
+    depends_on:
+      - api
+    restart: always
+
+  # 1. Твое ML Приложение (FastAPI)
+  api:
+    build: .
+    container_name: antifraud_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-4} --no-access-log
+    ports:
+      - "8000:8000"
+    # КРИТИЧНО: Пробиваем изоляцию Докера, чтобы API видел localhost твоего ноутбука (для LM Studio)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secretpassword
+      - POSTGRES_DB=antifraud_db
+      - API_KEY=DEV-MASTER-KEY
+      - LOG_LEVEL=INFO
+      - ENV=dev
+      - REDIS_MAX_CONNECTIONS=200
+      - REDIS_SOCKET_TIMEOUT=0.2
+      # Указываем FastAPI стучаться в LM Studio через хост-шлюз
+      - LLM_API_URL=http://host.docker.internal:1234/v1/chat/completions
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  # 2. Дашборд (Streamlit)
+  dashboard:
+    build: .
+    container_name: antifraud_dashboard
+    ports:
+      - "8501:8501"
+    command: streamlit run frontend/dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false
+    environment:
+      # ИСПРАВЛЕНО: Добавлен префикс /api/v1
+      - API_BASE_URL=http://api:8000/api/v1
+      - API_KEY=DEV-MASTER-KEY
+    depends_on:
+      - api
+    restart: always
+
+  # 3. База данных
   db:
     image: postgres:16-alpine
     container_name: antifraud_db
@@ -10,44 +66,45 @@ services:
       POSTGRES_PASSWORD: secretpassword
       POSTGRES_DB: antifraud_db
     ports:
-      - "5433:5432" # Внешний порт 5433 для DBeaver
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d antifraud_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: always
 
-  # --- CACHE: Real-time Feature Store ---
+  # 4. Кэш и In-Memory хранилище
   redis:
     image: redis:7.2-alpine
     container_name: redis-antifraud
-    command: redis-server --save 60 1 --loglevel warning
+    command: redis-server --save "" --appendonly no
     ports:
       - "6379:6379"
-    volumes:
-      - redisdata:/data
     restart: always
 
-  # --- MONITORING: Enterprise Dashboard ---
+  # 5. Дашборды мониторинга
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: antifraud_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    restart: always
+
   grafana:
+    depends_on:
+      - prometheus
     image: grafana/grafana:latest
     container_name: antifraud_grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin # Пароль для входа в Grafana
-      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafanadata:/var/lib/grafana
-    depends_on:
-      db:
-        condition: service_healthy
     restart: always
 
 volumes:
   pgdata:
-  redisdata:
   grafanadata:
+  prometheus-data:

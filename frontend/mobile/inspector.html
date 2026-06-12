@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Deep Inspector | 3D Telemetry Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            bg: '#050a15', panel: '#0a1224', border: '#1a2b4c',
+                            accent: '#00f0ff', success: '#00ff66', danger: '#ff003c', text: '#8a9bb3'
+                        }
+                    },
+                    animation: {
+                        'radar-spin': 'radar-spin 2s linear infinite',
+                        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                    },
+                    keyframes: {
+                        'radar-spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050a15; color: #8a9bb3; font-family: 'Inter', -apple-system, sans-serif;
+            overflow-x: hidden;
+            background-image: linear-gradient(rgba(26, 43, 76, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(26, 43, 76, 0.1) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .cyber-panel {
+            background: rgba(10, 18, 36, 0.8); border: 1px solid #1a2b4c; box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.02);
+            backdrop-filter: blur(10px); border-radius: 8px; position: relative; overflow: hidden;
+        }
+        .cyber-panel::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, #00f0ff, transparent); opacity: 0.5;
+        }
+        .cyber-panel::after {
+            content: ''; position: absolute; bottom: 0; right: 0; width: 10px; height: 10px;
+            border-bottom: 2px solid #00f0ff; border-right: 2px solid #00f0ff;
+        }
+        .neon-text { color: #00f0ff; text-shadow: 0 0 10px rgba(0, 240, 255, 0.5); }
+        .neon-success { color: #00ff66; text-shadow: 0 0 10px rgba(0, 255, 102, 0.5); }
+        .neon-danger { color: #ff003c; text-shadow: 0 0 10px rgba(255, 0, 60, 0.5); }
+        .matrix-feed { font-family: 'Courier New', Courier, monospace; font-size: 0.75rem; line-height: 1.2; color: #00ff66; text-shadow: 0 0 2px #00ff66; }
+        
+        /* Radar CSS */
+        .radar-container {
+            position: relative; width: 100%; height: 100%; border-radius: 50%;
+            border: 1px solid rgba(0, 240, 255, 0.3); background: radial-gradient(circle, rgba(0,240,255,0.05) 0%, rgba(0,0,0,0) 70%); overflow: hidden;
+        }
+        .radar-scanner {
+            position: absolute; top: 50%; left: 50%; width: 50%; height: 50%;
+            background: linear-gradient(45deg, rgba(0, 240, 255, 0.8) 0%, transparent 50%);
+            transform-origin: top left; animation: radar-spin 2s linear infinite;
+        }
+        .radar-grid {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(circle at center, transparent 30%, rgba(0, 240, 255, 0.1) 31%, transparent 32%),
+                              radial-gradient(circle at center, transparent 60%, rgba(0, 240, 255, 0.1) 61%, transparent 62%);
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #050a15; }
+        ::-webkit-scrollbar-thumb { background: #1a2b4c; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 gap-4">
+
+    <header class="flex justify-between items-center cyber-panel p-4">
+        <div class="flex items-center gap-4">
+            <div class="relative flex items-center justify-center w-12 h-12 rounded-full border border-cyber-accent">
+                <i class="fa-solid fa-satellite-dish neon-text text-xl"></i>
+                <div class="absolute inset-0 rounded-full border border-cyber-accent animate-ping-slow opacity-20"></div>
+            </div>
+            <div>
+                <h1 class="text-2xl font-black text-white tracking-widest uppercase"><span class="neon-text">AI</span> Deep Inspector</h1>
+                <p class="text-xs tracking-widest text-cyber-text">LIVE KINEMATIC & BEHAVIORAL TELEMETRY SCANNER</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-6">
+            <div class="flex flex-col items-end">
+                <span class="text-[10px] uppercase tracking-widest text-cyber-text">Target Lock</span>
+                <span id="target-status" class="font-mono text-sm neon-danger uppercase"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>WAITING FOR HANDSHAKE</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <span class="text-[10px] uppercase tracking-widest text-cyber-text">Data Uplink</span>
+                <span id="uplink-speed" class="font-mono text-sm text-white">0 kbps</span>
+            </div>
+            <button onclick="window.location.reload()" class="p-2 border border-cyber-border hover:border-cyber-accent rounded transition text-cyber-text hover:neon-text">
+                <i class="fa-solid fa-rotate"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 grid grid-cols-12 gap-4 min-h-0">
+        
+        <div class="col-span-3 flex flex-col gap-4">
+            <div class="cyber-panel p-4 flex flex-col">
+                <h2 class="text-sm font-bold text-white tracking-widest uppercase mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-fingerprint neon-text"></i> Hardware Fingerprint
+                </h2>
+                <div class="space-y-3 text-xs font-mono">
+                    <div class="flex justify-between border-b border-cyber-border pb-1">
+                        <span class="text-cyber-text">OS / Platform</span><span id="fp-platform" class="text-white">SCANNING...</span>
+                    </div>
+                    <div class="flex justify-between border-b border-cyber-border pb-1">
+                        <span class="text-cyber-text">CPU Cores</span><span id="fp-cores" class="text-white">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-cyber-border pb-1">
+                        <span class="text-cyber-text">System RAM</span><span id="fp-ram" class="text-white">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-cyber-border pb-1">
+                        <span class="text-cyber-text">Display Matrix</span><span id="fp-screen" class="text-white">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-cyber-border pb-1">
+                        <span class="text-cyber-text">User Agent</span><span id="fp-ua" class="text-white truncate w-32 text-right" title="...">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cyber-panel p-4 flex-1 flex flex-col overflow-hidden">
+                <h2 class="text-sm font-bold text-white tracking-widest uppercase mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-terminal neon-success"></i> Raw Vector Stream
+                </h2>
+                <div class="flex-1 overflow-y-auto matrix-feed" id="json-feed">
+                    > AWAITING INCOMING PAYLOAD...
+                </div>
+            </div>
+        </div>
+
+        <div class="col-span-5 flex flex-col gap-4">
+            <div class="cyber-panel p-4 flex-1 flex flex-col relative">
+                <h2 class="text-sm font-bold text-white tracking-widest uppercase mb-4 z-10 flex justify-between">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-cube neon-text"></i> Live 3D Kinematics</span>
+                    <span id="gyro-status" class="text-xs font-mono neon-success">QUATERNION ACTIVE</span>
+                </h2>
+                
+                <div id="3d-container" class="absolute inset-0 top-12 bottom-20 flex items-center justify-center"></div>
+                
+                <div class="absolute bottom-4 left-4 right-4 grid grid-cols-3 gap-2 text-center font-mono text-xs">
+                    <div class="bg-black/50 border border-cyber-border rounded p-2">
+                        <div class="text-cyber-text mb-1">X-AXIS (BETA)</div><div id="val-beta" class="neon-danger text-lg font-bold">0.00°</div>
+                    </div>
+                    <div class="bg-black/50 border border-cyber-border rounded p-2">
+                        <div class="text-cyber-text mb-1">Y-AXIS (GAMMA)</div><div id="val-gamma" class="neon-success text-lg font-bold">0.00°</div>
+                    </div>
+                    <div class="bg-black/50 border border-cyber-border rounded p-2">
+                        <div class="text-cyber-text mb-1">Z-AXIS (ALPHA)</div><div id="val-alpha" class="neon-text text-lg font-bold">0.00°</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-span-4 flex flex-col gap-4">
+            <div class="cyber-panel p-4 h-64 flex flex-col relative">
+                <h2 class="text-sm font-bold text-white tracking-widest uppercase mb-2 flex items-center gap-2 z-10">
+                    <i class="fa-solid fa-hand-pointer text-[#ff003c]"></i> Touch & Swipe Radar
+                </h2>
+                
+                <div class="flex-1 flex items-center justify-center relative p-2">
+                    <div class="aspect-square h-full relative">
+                        <div class="radar-container">
+                            <div class="radar-scanner"></div>
+                            <div class="radar-grid"></div>
+                            <div class="absolute top-1/2 left-0 right-0 h-px bg-cyber-border"></div>
+                            <div class="absolute left-1/2 top-0 bottom-0 w-px bg-cyber-border"></div>
+                            <canvas id="radarCanvas" class="absolute inset-0 w-full h-full z-10"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute right-4 top-8 bottom-4 flex flex-col justify-center gap-4 text-right">
+                        <div>
+                            <div class="text-[10px] text-cyber-text uppercase tracking-widest">Velocity (Mean)</div>
+                            <div id="stat-vel" class="text-xl font-mono text-[#ff003c] font-bold">0.00 <span class="text-xs">px/ms</span></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-cyber-text uppercase tracking-widest">Length (Mean)</div>
+                            <div id="stat-len" class="text-xl font-mono text-[#ff003c] font-bold">0 <span class="text-xs">px</span></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-cyber-text uppercase tracking-widest">Total Swipes</div>
+                            <div id="stat-swipes" class="text-xl font-mono text-white font-bold">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cyber-panel p-4 flex-1 flex flex-col">
+                <h2 class="text-sm font-bold text-white tracking-widest uppercase mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-keyboard text-yellow-400"></i> Keystroke Dynamics
+                </h2>
+                
+                <div class="flex gap-4 mb-4">
+                    <div class="flex-1 bg-black/50 border border-cyber-border rounded p-3 text-center">
+                        <div class="text-[10px] text-cyber-text uppercase tracking-widest mb-1">Total Keys</div>
+                        <div id="stat-keys" class="text-2xl font-mono text-yellow-400 font-bold">0</div>
+                    </div>
+                    <div class="flex-1 bg-black/50 border border-cyber-border rounded p-3 text-center">
+                        <div class="text-[10px] text-cyber-text uppercase tracking-widest mb-1">Rhythm Entropy (STD)</div>
+                        <div id="stat-entropy" class="text-2xl font-mono text-yellow-400 font-bold">0.00</div>
+                    </div>
+                </div>
+
+                <div class="flex-1 relative min-h-[100px]">
+                    <canvas id="entropyChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. THREE.JS 3D PHONE SETUP (QUATERNIONS CALIBRATED & GIMBAL-LOCK FREE)
+        // ==========================================
+        const container3D = document.getElementById('3d-container');
+        const scene = new THREE.Scene();
+        
+        // Default values in case container is initially 0
+        let cw = container3D.clientWidth || 300;
+        let ch = container3D.clientHeight || 500;
+        
+        const camera = new THREE.PerspectiveCamera(45, cw / ch, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        
+        renderer.setSize(cw, ch);
+        container3D.appendChild(renderer.domElement);
+
+        window.addEventListener('resize', () => {
+            if (!container3D) return;
+            cw = container3D.clientWidth;
+            ch = container3D.clientHeight;
+            if (cw && ch) {
+                camera.aspect = cw / ch;
+                camera.updateProjectionMatrix();
+                renderer.setSize(cw, ch);
+            }
+        });
+
+        // Trigger resize once after load to fix layout quirks
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 500);
+
+        const phoneGeo = new THREE.BoxGeometry(2, 4, 0.2);
+        const materials = [
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }), // Right
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }), // Left
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }), // Top
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }), // Bottom
+            new THREE.MeshStandardMaterial({ color: 0x050a15, metalness: 0.8, roughness: 0.2, emissive: 0x00f0ff, emissiveIntensity: 0.2 }), // Front
+            new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 })  // Back
+        ];
+
+        const phone = new THREE.Mesh(phoneGeo, materials);
+        
+        const edges = new THREE.EdgesGeometry(phoneGeo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.5 }));
+        phone.add(line);
+        scene.add(phone);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0x00f0ff, 1);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+
+        camera.position.z = 6;
+
+        // Math objects for Quaternion calculation
+        const targetQuaternion = new THREE.Quaternion();
+        const euler = new THREE.Euler();
+        // The base offset transforms the phone so it lies flat on the virtual desk
+        const baseOffset = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90 deg on X
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            // Smooth spherical interpolation (Slerp) prevents jitter
+            phone.quaternion.slerp(targetQuaternion, 0.15); 
+            renderer.render(scene, camera);
+        }
+        animate3D();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container3D.clientWidth / container3D.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container3D.clientWidth, container3D.clientHeight);
+        });
+
+        // ==========================================
+        // 2. RADAR CANVAS (SMOOTH PATH TRACING)
+        // ==========================================
+        const radarCanvas = document.getElementById('radarCanvas');
+        const rctx = radarCanvas.getContext('2d');
+        let swipePath = [];
+
+        function resizeCanvas() {
+            radarCanvas.width = radarCanvas.clientWidth;
+            radarCanvas.height = radarCanvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function addRadarPoint(xPct, yPct, force) {
+            const px = (xPct / 100) * radarCanvas.width;
+            const py = (yPct / 100) * radarCanvas.height;
+            swipePath.push({ x: px, y: py, force: force, life: 1.0 });
+        }
+
+        function animateRadar() {
+            requestAnimationFrame(animateRadar);
+            rctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+            
+            if (swipePath.length < 2) {
+                if (swipePath.length === 1) swipePath[0].life -= 0.05;
+                if (swipePath.length === 1 && swipePath[0].life <= 0) swipePath = [];
+                return;
+            }
+
+            // Draw smooth glowing comet tail
+            rctx.beginPath();
+            rctx.moveTo(swipePath[0].x, swipePath[0].y);
+            
+            for (let i = 1; i < swipePath.length; i++) {
+                // Decay life
+                swipePath[i].life -= 0.02;
+                
+                // Curve smoothing
+                const xc = (swipePath[i].x + swipePath[i - 1].x) / 2;
+                const yc = (swipePath[i].y + swipePath[i - 1].y) / 2;
+                rctx.quadraticCurveTo(swipePath[i - 1].x, swipePath[i - 1].y, xc, yc);
+            }
+            
+            // Connect to last point
+            rctx.lineTo(swipePath[swipePath.length - 1].x, swipePath[swipePath.length - 1].y);
+
+            rctx.lineWidth = 3 + (swipePath[swipePath.length-1].force * 5);
+            rctx.strokeStyle = `rgba(255, 0, 60, ${Math.max(...swipePath.map(p=>p.life))})`;
+            rctx.lineCap = 'round';
+            rctx.lineJoin = 'round';
+            rctx.shadowBlur = 15;
+            rctx.shadowColor = '#ff003c';
+            rctx.stroke();
+
+            // Cleanup dead points
+            swipePath = swipePath.filter(p => p.life > 0);
+        }
+        animateRadar();
+
+        // ==========================================
+        // 3. CHART.JS SETUP
+        // ==========================================
+        const ctx = document.getElementById('entropyChart').getContext('2d');
+        const entropyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [{
+                    label: 'Keystroke Entropy',
+                    data: Array(20).fill(0),
+                    borderColor: '#facc15',
+                    backgroundColor: 'rgba(250, 204, 21, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    x: { display: false },
+                    y: { 
+                        display: true, 
+                        grid: { color: 'rgba(26, 43, 76, 0.5)' },
+                        ticks: { color: '#8a9bb3', font: { size: 10 } },
+                        suggestedMin: 0,
+                        suggestedMax: 2
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ==========================================
+        // 4. UI UPDATE LOGIC
+        // ==========================================
+        let screenWidth = 400; // Defaults
+        let screenHeight = 800;
+
+        function updateUI(payload) {
+            document.getElementById('target-status').className = 'font-mono text-sm neon-success uppercase';
+            document.getElementById('target-status').innerHTML = '<i class="fa-solid fa-lock mr-2"></i>TARGET LOCKED';
+            
+            // Uplink calculation
+            const bytes = JSON.stringify(payload).length;
+            const kbps = ((bytes * 8 * 30) / 1024).toFixed(1); // 30 FPS estimate
+            document.getElementById('uplink-speed').innerText = `${kbps} kbps`;
+
+            // 1. Hardware Fingerprint
+            if (payload.network) {
+                document.getElementById('fp-platform').innerText = payload.network.platform || "Unknown";
+                document.getElementById('fp-cores').innerText = payload.network.cores || "Unknown";
+                document.getElementById('fp-ram').innerText = payload.network.ram || "Unknown";
+                document.getElementById('fp-screen').innerText = payload.network.screen || "Unknown";
+                document.getElementById('fp-ua').innerText = payload.network.user_agent || "Unknown";
+                
+                if (payload.network.screen) {
+                    const parts = payload.network.screen.split('x');
+                    if (parts.length === 2) {
+                        screenWidth = parseInt(parts[0]) || 400;
+                        screenHeight = parseInt(parts[1]) || 800;
+                    }
+                }
+            }
+
+            // 2. Gyroscope (Quaternions with Calibration)
+            if (payload.gyroscope_x_y_z) {
+                const [beta, gamma, alpha] = payload.gyroscope_x_y_z;
+                
+                document.getElementById('val-beta').innerText = `${beta.toFixed(2)}°`;
+                document.getElementById('val-gamma').innerText = `${gamma.toFixed(2)}°`;
+                document.getElementById('val-alpha').innerText = `${alpha.toFixed(2)}°`;
+
+                // Convert degrees to radians
+                const deg2rad = Math.PI / 180;
+                
+                // W3C Device Orientation Mapping to Three.js
+                euler.set(beta * deg2rad, alpha * deg2rad, -gamma * deg2rad, 'YXZ');
+                
+                // Reset target, apply orientation, then apply screen layout offset
+                targetQuaternion.setFromEuler(euler);
+                targetQuaternion.multiply(baseOffset);
+            }
+
+            // 3. Behavioral Features
+            if (payload.behavioral_features) {
+                const b = payload.behavioral_features;
+                document.getElementById('stat-vel').innerHTML = `${b.velocity_mean.toFixed(2)} <span class="text-xs">px/ms</span>`;
+                document.getElementById('stat-len').innerHTML = `${b.length_px_mean.toFixed(0)} <span class="text-xs">px</span>`;
+                document.getElementById('stat-keys').innerText = b.keys_count;
+                document.getElementById('stat-swipes').innerText = b.swipes_count;
+            }
+
+            // Live Canvas Radar Trails (Touchmove)
+            if (payload.live_touch) {
+                if (payload.live_touch.x !== null) {
+                    const xPct = (payload.live_touch.x / screenWidth) * 100;
+                    const yPct = (payload.live_touch.y / screenHeight) * 100;
+                    addRadarPoint(xPct, yPct, payload.live_touch.force);
+                } else {
+                    // Finger lifted, break the path
+                    swipePath = [];
+                }
+            }
+
+            // 4. Keystroke Entropy (Chart)
+            if (payload.keystroke_entropy !== undefined) {
+                document.getElementById('stat-entropy').innerText = payload.keystroke_entropy.toFixed(3);
+                entropyChart.data.datasets[0].data.shift();
+                entropyChart.data.datasets[0].data.push(payload.keystroke_entropy);
+                entropyChart.update();
+            }
+
+            // 5. Matrix JSON Feed
+            const jsonStr = JSON.stringify(payload, null, 2);
+            const feed = document.getElementById('json-feed');
+            const matrixLines = jsonStr.split('\n').map(line => {
+                if(Math.random() > 0.95) return `<span class="text-white bg-green-900">${line}</span>`;
+                return line;
+            }).join('\n');
+
+            feed.innerHTML = `<pre>${matrixLines}</pre>`;
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        // ==========================================
+        // 5. WEBSOCKET LOGIC
+        // ==========================================
+        let ws;
+        function initWebSocket() {
+            let wsUrl;
+            if (window.location.protocol === 'file:') {
+                // Если открыли файл локально двойным кликом на компьютере
+                wsUrl = `ws://127.0.0.1:8080/api/v1/ws/telemetry/inspector`;
+            } else {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                wsUrl = `${protocol}//${window.location.host}/api/v1/ws/telemetry/inspector`;
+            }
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                document.getElementById('target-status').className = 'font-mono text-sm neon-success uppercase';
+                document.getElementById('target-status').innerHTML = '<i class="fa-solid fa-satellite-dish mr-2"></i>UPLINK ESTABLISHED';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    updateUI(payload);
+                } catch (e) {
+                    console.error('Payload parse error:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('target-status').className = 'font-mono text-sm neon-danger uppercase';
+                document.getElementById('target-status').innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>WS DISCONNECTED';
+                document.getElementById('uplink-speed').innerText = '0 kbps';
+                // Auto-reconnect Backoff
+                setTimeout(initWebSocket, 2000);
+            };
+            
+            ws.onerror = (e) => {
+                console.error('WebSocket Error', e);
+            };
+        }
+
+        // Start connection
+        initWebSocket();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{"timestamp": "2026-06-03T17:15:00.001Z", "level": "info", "event": "startup_begin", "version": "1.0.0"}
+{"timestamp": "2026-06-03T17:15:00.052Z", "level": "info", "event": "ml_system_ready", "features_count": 74}
+{"timestamp": "2026-06-03T17:15:00.125Z", "level": "info", "event": "redis_initialized", "host": "redis"}
+{"timestamp": "2026-06-03T17:15:00.320Z", "level": "info", "event": "model_warmed_up", "status": "success"}
+{"timestamp": "2026-06-03T17:15:00.322Z", "level": "info", "event": "startup_complete", "status": "listening"}
+{"timestamp": "2026-06-03T17:15:12.110Z", "level": "info", "event": "incoming_transaction_scoring_request", "transaction_id": "TXN-2830", "user_id": "usr_id_002830", "amount_kzt": 644.0}
+{"timestamp": "2026-06-03T17:15:12.112Z", "level": "info", "event": "fetching_redis_behavioral_score", "user_id": "usr_id_002830"}
+{"timestamp": "2026-06-03T17:15:12.115Z", "level": "info", "event": "redis_behavioral_score_found", "user_id": "usr_id_002830", "latest_behavior_score": 0.7715}
+{"timestamp": "2026-06-03T17:15:12.116Z", "level": "info", "event": "running_catboost_inference", "transaction_id": "TXN-2830"}
+{"timestamp": "2026-06-03T17:15:12.128Z", "level": "info", "event": "catboost_inference_completed", "transaction_id": "TXN-2830", "tx_prob": 0.911}
+{"timestamp": "2026-06-03T17:15:12.129Z", "level": "info", "event": "running_decision_engine", "transaction_id": "TXN-2830", "tx_prob": 0.911, "behavior_score": 0.7715}
+{"timestamp": "2026-06-03T17:15:12.130Z", "level": "info", "event": "decision_engine_verdict", "transaction_id": "TXN-2830", "action": "BLOCK", "reasons": ["SUSPICIOUS_BEHAVIOR", "HIGH_ML_RISK"]}
+{"timestamp": "2026-06-03T17:15:12.131Z", "level": "info", "event": "scheduling_db_audit_log", "transaction_id": "TXN-2830"}
+{"timestamp": "2026-06-03T17:15:12.132Z", "level": "info", "event": "transaction_scoring_completed", "transaction_id": "TXN-2830", "processing_time_ms": 22.12}

@@ -1,0 +1,44 @@
+{
+  "user_id": "usr_id_002830",
+  "baseline_profile": {
+    "duration_ms_mean": 240.5,
+    "duration_ms_std": 12.3,
+    "duration_ms_max": 290.0,
+    "length_px_mean": 380.0,
+    "length_px_std": 14.2,
+    "length_px_max": 420.0,
+    "velocity_mean": 1.58,
+    "velocity_std": 0.22,
+    "velocity_max": 2.1,
+    "median_pressure_mean": 0.52,
+    "median_pressure_std": 0.04,
+    "median_pressure_max": 0.58,
+    "median_area_mean": 5.12,
+    "median_area_std": 0.48,
+    "median_area_max": 5.92
+  },
+  "current_profile": {
+    "duration_ms_mean": 320.1,
+    "duration_ms_std": 35.8,
+    "duration_ms_max": 490.0,
+    "length_px_mean": 180.2,
+    "length_px_std": 65.4,
+    "length_px_max": 290.0,
+    "velocity_mean": 0.56,
+    "velocity_std": 0.41,
+    "velocity_max": 0.95,
+    "median_pressure_mean": 0.81,
+    "median_pressure_std": 0.18,
+    "median_pressure_max": 0.98,
+    "median_area_mean": 7.45,
+    "median_area_std": 1.25,
+    "median_area_max": 9.15
+  },
+  "biometric_distance_metrics": {
+    "velocity_divergence_pct": 64.5,
+    "pressure_increase_pct": 55.7,
+    "trajectory_shortening_pct": 52.5
+  },
+  "fused_risk_probability": 0.7715,
+  "verdict": "IMPOSTOR"
+}

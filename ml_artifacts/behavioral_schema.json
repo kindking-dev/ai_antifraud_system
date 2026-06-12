@@ -1,0 +1,23 @@
+{
+    "features": [
+        "duration_ms_mean",
+        "duration_ms_std",
+        "duration_ms_max",
+        "length_px_mean",
+        "length_px_std",
+        "length_px_max",
+        "velocity_mean",
+        "velocity_std",
+        "velocity_max",
+        "median_pressure_mean",
+        "median_pressure_std",
+        "median_pressure_max",
+        "median_area_mean",
+        "median_area_std",
+        "median_area_max"
+    ],
+    "metrics": {
+        "roc_auc": 0.9326644370122631
+    },
+    "window_size": 15
+}

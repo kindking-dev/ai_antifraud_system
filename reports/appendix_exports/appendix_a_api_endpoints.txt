@@ -1,0 +1,40 @@
+========================================================================
+SENTINEL AI: REST API ENDPOINTS CONFIGURATION (FASTAPI ROUTING FRAGMENT)
+========================================================================
+
+1. Core Score Transaction Endpoint (Late Fusion Matrix Verdict)
+------------------------------------------------------------------------
+POST /api/v1/score-transaction
+Headers:
+  - X-API-KEY: DEV-MASTER-KEY
+  - Content-Type: application/json
+Description:
+  Asynchronously orchestrates the decision between device profiling, behavioral
+  biometrics (from Redis), and Transaction ML (CatBoost). Employs late-fusion
+  veto matrix logic. Logs transaction logs to PostgreSQL asynchronously.
+
+2. Behavioral Scoring Endpoint
+------------------------------------------------------------------------
+POST /api/v1/score-behavior
+Description:
+  Accepts touch dynamics features or raw events, calculates biometric risk against
+  user baseline, and saves the behavior score in Redis cache (10 min TTL).
+
+3. System Reset (Clean Demo Database & Redis)
+------------------------------------------------------------------------
+DELETE /api/v1/system/reset
+Description:
+  Truncates transaction tables in PostgreSQL and flushes Redis cache keys.
+
+4. Live Telemetry Client Stream (WebSocket)
+------------------------------------------------------------------------
+WS /api/v1/ws/telemetry/client
+Description:
+  Accepts real-time raw gesture movements (accelerometer, pressure, coordinates)
+  and broadcasts to Redis Pub/Sub channels for zero-latency monitoring.
+
+5. Deep Inspector Monitoring WebSockets
+------------------------------------------------------------------------
+WS /api/v1/ws/telemetry/inspector
+Description:
+  Deep security console connects here to receive live events streamed by clients.

@@ -1,0 +1,21 @@
+{
+    "name": "Fake Bank App",
+    "short_name": "Fake Bank",
+    "description": "AI-Powered Anti-Fraud System",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#f14635",
+    "icons": [
+        {
+            "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Bank_icon_black.svg/1024px-Bank_icon_black.svg.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Bank_icon_black.svg/1024px-Bank_icon_black.svg.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

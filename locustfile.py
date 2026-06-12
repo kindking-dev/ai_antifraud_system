@@ -1,98 +1,139 @@
+import os
 import random
 import uuid
-import hashlib
 from datetime import datetime, timezone
-from locust import HttpUser, task, between
+
+from locust import HttpUser, between, task
 
 
-class AntiFraudRealWorldSimulator(HttpUser):
-    # Имитируем реальное время раздумья человека (от 10 до 20 секунд)
-    wait_time = between(10.0, 20.0)
+API_KEY = os.getenv("API_KEY", "DEV-MASTER-KEY")
+USER_POOL_SIZE = int(os.getenv("LOCUST_USER_POOL_SIZE", "10000"))
+
+# core: production hot path only. lifecycle: includes /set-baseline startup calls.
+LOCUST_PROFILE = os.getenv("LOCUST_PROFILE", "core").strip().lower()
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def behavior_payload(user_id: str) -> dict:
+    base_x = random.randint(80, 180)
+    base_y = random.randint(180, 420)
+    started_at = random.randint(1_000_000, 9_000_000)
+
+    events = []
+    for i in range(15):
+        x = base_x + random.randint(-12, 12) + i * random.randint(2, 8)
+        y = base_y + random.randint(-18, 18) + i * random.randint(1, 6)
+        events.append(
+            {
+                # Keep both naming styles so load tests match current demos and engine code.
+                "x": x,
+                "y": y,
+                "x_pos": x,
+                "y_pos": y,
+                "timestamp_ms": started_at + i * random.randint(18, 45),
+                "pressure": round(random.uniform(0.35, 0.85), 3),
+                "contact_size": round(random.uniform(0.04, 0.18), 3),
+            }
+        )
+
+    return {
+        "user_id": user_id,
+        "device_id": f"android-{random.randint(1, 500)}",
+        "events": events,
+        "timestamp": now_iso(),
+    }
+
+
+def transaction_payload(user_id: str) -> dict:
+    amount = round(random.choice([1500, 3200, 7500, 15000, 45000, 120000]) * random.uniform(0.8, 1.25), 2)
+    suspicious = random.random() < 0.08
+
+    return {
+        "transaction_id": f"tx-{uuid.uuid4()}",
+        "user_id": user_id,
+        "amount_kzt": amount,
+        "source": random.choice(["MOBILE_APP", "WEB", "API"]),
+        "session_trust_score": round(random.uniform(0.15, 0.45) if suspicious else random.uniform(0.72, 0.98), 3),
+        "network": {
+            "ip_address": f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}",
+            "ja3_fingerprint": uuid.uuid4().hex,
+            "user_agent": random.choice(
+                [
+                    "SentinelMobile/1.0 Android",
+                    "SentinelMobile/1.0 iOS",
+                    "Mozilla/5.0 Chrome/126.0",
+                ]
+            ),
+            "is_vpn_or_proxy": suspicious,
+        },
+        "biometrics": {
+            "gyroscope_x_y_z": [
+                round(random.uniform(-0.8, 0.8), 3),
+                round(random.uniform(-0.8, 0.8), 3),
+                round(random.uniform(8.8, 10.2), 3),
+            ],
+            "keystroke_entropy": round(random.uniform(0.2, 1.8), 3),
+            "touch_pressure_variance": round(random.uniform(0.01, 0.22), 3),
+        },
+        "timestamp_utc": now_iso(),
+    }
+
+
+class AntifraudUser(HttpUser):
+    wait_time = between(0.2, 1.2)
 
     def on_start(self):
-        """Вызывается при старте каждого виртуального юзера."""
         self.headers = {
             "Content-Type": "application/json",
-            "X-API-KEY": "DEV-MASTER-KEY",
+            "X-API-KEY": API_KEY,
         }
+        self.user_id = f"user-{random.randint(1, USER_POOL_SIZE)}"
 
-    @task(85)  # 85% - Обычные клиенты (Нормальное поведение)
-    def normal_customer(self):
-        user_id = f"USR-{random.randint(10000, 99999)}"
-        payload = self._build_payload(user_id, profile="CLEAN")
-        self.client.post(
-            "/v1/score-transaction",
-            json=payload,
-            headers=self.headers,
-            name="01_Normal_User",
-        )
-
-    @task(10)  # 10% - Атака на скорость (Velocity / Carding)
-    def velocity_attacker(self):
-        # Один и тот же злоумышленник "долбит" систему 5 раз подряд
-        attacker_id = "ATTACKER-VELOCITY-001"
-        for _ in range(5):
-            payload = self._build_payload(attacker_id, profile="VELOCITY")
+        if LOCUST_PROFILE == "lifecycle":
             self.client.post(
-                "/v1/score-transaction",
-                json=payload,
+                "/api/v1/set-baseline",
+                json=behavior_payload(self.user_id),
                 headers=self.headers,
-                name="02_Velocity_Attack",
+                name="/api/v1/set-baseline",
             )
 
-    @task(5)  # 5% - Продвинутый фрод (Аномальная биометрия)
-    def advanced_fraud_bot(self):
-        user_id = f"BOT-{uuid.uuid4().hex[:5].upper()}"
-        payload = self._build_payload(user_id, profile="FRAUD_BOT")
-        self.client.post(
-            "/v1/score-transaction",
-            json=payload,
+    @task(1)
+    def health(self):
+        with self.client.get("/health", name="/health", catch_response=True) as response:
+            if response.status_code != 200:
+                response.failure(f"unexpected status {response.status_code}")
+
+    @task(3)
+    def score_behavior(self):
+        with self.client.post(
+            "/api/v1/score-behavior",
+            json=behavior_payload(self.user_id),
             headers=self.headers,
-            name="03_Biometric_Bot_Attack",
-        )
+            name="/api/v1/score-behavior",
+            catch_response=True,
+        ) as response:
+            if response.status_code != 200:
+                response.failure(f"unexpected status {response.status_code}: {response.text[:200]}")
+                return
+            body = response.json()
+            if "fraud_probability" not in body or "processing_time_ms" not in body:
+                response.failure("missing behavioral response fields")
 
-    def _build_payload(self, user_id, profile):
-        # 1. Генерируем JA3 хеш ровно 32 символа (требование твоей модели)
-        ja3 = hashlib.md5(user_id.encode()).hexdigest()
-
-        # 2. Логика в зависимости от профиля
-        is_fraud = profile in ["VELOCITY", "FRAUD_BOT"]
-
-        # Для ботов биометрия "мёртвая" (нули), для людей - живая
-        if profile == "FRAUD_BOT":
-            biometrics = {
-                "gyroscope_x_y_z": [0.0, 0.0, 0.0],
-                "keystroke_entropy": 0.01,
-                "touch_pressure_variance": 0.001,
-            }
-            amount = float(random.randint(500000, 1500000))
-            trust = 0.05
-        else:
-            biometrics = {
-                "gyroscope_x_y_z": [
-                    round(random.uniform(0.1, 0.8), 2) for _ in range(3)
-                ],
-                "keystroke_entropy": round(random.uniform(0.6, 0.9), 2),
-                "touch_pressure_variance": round(random.uniform(0.1, 0.3), 2),
-            }
-            amount = float(random.randint(500, 45000))
-            trust = 0.98
-
-        # Собираем финальный JSON строго по твоей схеме Pydantic
-        return {
-            "transaction_id": f"TXN-{uuid.uuid4().hex[:15].upper()}",
-            "user_id": user_id,
-            "amount_kzt": amount,
-            "source": "MOBILE_APP" if profile != "FRAUD_BOT" else "API",
-            "network": {
-                "ip_address": f"{random.randint(1, 255)}.{random.randint(1, 255)}.1.1",
-                "ja3_fingerprint": ja3,
-                "user_agent": "iPhone/Safari"
-                if not is_fraud
-                else "Python/Requests-Bot",
-                "is_vpn_or_proxy": is_fraud,
-            },
-            "biometrics": biometrics,
-            "session_trust_score": trust,
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        }
+    @task(6)
+    def score_transaction(self):
+        with self.client.post(
+            "/api/v1/score-transaction",
+            json=transaction_payload(self.user_id),
+            headers=self.headers,
+            name="/api/v1/score-transaction",
+            catch_response=True,
+        ) as response:
+            if response.status_code != 200:
+                response.failure(f"unexpected status {response.status_code}: {response.text[:200]}")
+                return
+            body = response.json()
+            if "action" not in body or "processing_time_ms" not in body:
+                response.failure("missing transaction response fields")

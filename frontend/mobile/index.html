@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fake Bank App | Secure Clone</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Bank_icon_black.svg/1024px-Bank_icon_black.svg.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bank: {
+                            red: '#f14635', dark: '#2c2c2c', gray: '#f5f5f5', border: '#e5e7eb', text: '#1f2937'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html, body {
+            background-color: #f3f4f6;
+            overscroll-behavior-y: none !important;
+            overscroll-behavior: none !important;
+            overflow: hidden !important;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .ios-shadow {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+        }
+        input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .bottom-sheet {
+            transform: translateY(100%);
+            transition: transform 0.35s cubic-bezier(0.15, 0.85, 0.35, 1);
+        }
+        .bottom-sheet.open {
+            transform: translateY(0);
+        }
+        .telemetry-box {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.75rem;
+        }
+
+        /* iOS-style toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 28px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #e5e7eb;
+            transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 28px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        input:checked + .slider {
+            background-color: #f14635; /* Bank Red */
+        }
+        input:checked + .slider.slider-green {
+            background-color: #10b981; /* Emerald Green */
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col text-bank-text relative" id="app-body">
+
+    <!-- Защищенная сессия (Overlay) -->
+    <div id="sensor-unlock-overlay" class="fixed inset-0 bg-gray-950/95 z-[100] flex flex-col items-center justify-center p-8 text-center text-white backdrop-blur-lg">
+        <div class="w-20 h-20 rounded-3xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6 shadow-lg shadow-red-500/5">
+            <i class="fa-solid fa-shield-halved text-4xl text-bank-red animate-pulse"></i>
+        </div>
+        <h2 class="text-2xl font-extrabold mb-3 tracking-tight">Защищенная сессия</h2>
+        <p class="text-sm text-gray-400 mb-8 max-w-xs leading-relaxed">Для защиты ваших средств системе AI-Powered Anti-Fraud требуется доступ к аппаратной телеметрии устройства.</p>
+        <button id="unlock-btn" class="w-full max-w-xs bg-bank-red hover:bg-red-600 active:scale-95 transition-all text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-500/30">
+            Активировать защиту
+        </button>
+    </div>
+
+    <!-- Шапка приложения (Bank Bar) -->
+    <header class="bg-white px-4 py-3.5 flex justify-between items-center ios-shadow z-10 sticky top-0 border-b border-gray-100">
+        <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-bank-red flex items-center justify-center text-white font-extrabold text-sm shadow-sm shadow-red-500/20">
+                <i class="fa-solid fa-building-columns"></i>
+            </div>
+            <div class="font-black text-lg tracking-tight text-gray-800">Fake Bank App</div>
+        </div>
+        <div class="flex items-center gap-4 text-gray-700 text-lg">
+            <i class="fa-solid fa-qrcode hover:text-bank-red transition-colors cursor-pointer"></i>
+            <i class="fa-solid fa-bell hover:text-bank-red transition-colors cursor-pointer"></i>
+            <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 border border-gray-200">
+                <i class="fa-solid fa-user text-xs"></i>
+            </div>
+        </div>
+    </header>
+
+    <!-- Основная прокручиваемая зона -->
+    <div class="flex-1 overflow-y-auto pb-28" id="swipe-zone">
+        
+        <!-- Карточка счета (Мои Счета) -->
+        <div class="mx-4 mt-4 p-4 bg-white rounded-2xl ios-shadow border border-gray-100/50">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Мои Счета</h2>
+            </div>
+            <div class="flex items-center gap-4 py-1">
+                <div class="w-12 h-8 bg-gradient-to-r from-gray-900 via-yellow-600 to-gray-900 rounded-lg flex items-center justify-center text-yellow-400 font-serif text-[10px] font-extrabold shadow-sm border border-yellow-500/30">GOLD</div>
+                <div class="flex-1">
+                    <div class="font-bold text-sm text-gray-800">Premium Card</div>
+                    <div class="text-xs text-gray-400">•• 4589</div>
+                </div>
+                <div class="text-right">
+                    <div class="font-extrabold text-lg text-gray-950" id="balance">1 250 400 ₸</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Форма перевода -->
+        <div class="mx-4 mt-3 bg-white rounded-2xl ios-shadow border border-gray-100/50 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="font-bold text-sm text-gray-800">Перевод клиенту банка</h2>
+                <span class="text-[9px] bg-red-50 text-bank-red px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">Без комиссии</span>
+            </div>
+            
+            <div class="p-5 space-y-4">
+                <!-- Поле получателя -->
+                <div class="group rounded-xl border border-gray-200 bg-gray-50/50 p-3.5 transition-all focus-within:border-bank-red focus-within:bg-white focus-within:ring-2 focus-within:ring-red-500/10">
+                    <label class="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Телефон получателя</label>
+                    <div class="flex items-center mt-1">
+                        <span class="text-base font-bold text-gray-700 mr-2">+7</span>
+                        <input type="tel" id="recipient" value="701 555 33 22" class="w-full text-base font-bold text-gray-800 bg-transparent focus:outline-none placeholder-gray-300" placeholder="701 000 00 00">
+                        <i class="fa-solid fa-address-book text-gray-400 group-focus-within:text-bank-red transition-colors text-lg ml-2 cursor-pointer"></i>
+                    </div>
+                </div>
+
+                <!-- Поле суммы -->
+                <div class="group rounded-xl border border-gray-200 bg-gray-50/50 p-3.5 transition-all focus-within:border-bank-red focus-within:bg-white focus-within:ring-2 focus-within:ring-red-500/10">
+                    <label class="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Сумма перевода</label>
+                    <div class="flex items-center mt-1">
+                        <input type="number" id="amount" value="15000" class="w-full text-2xl font-black text-gray-800 bg-transparent focus:outline-none placeholder-gray-300" placeholder="0">
+                        <span class="text-lg font-bold text-gray-400 ml-2">₸</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Комиссия -->
+            <div class="px-5 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center text-xs">
+                <div class="text-gray-500 font-medium">Комиссия за перевод</div>
+                <div class="font-extrabold text-emerald-600">0 ₸</div>
+            </div>
+        </div>
+
+        <!-- Панель симулятора для тестирования (Диплом) -->
+        <div class="mx-4 mt-3 bg-white rounded-2xl ios-shadow border border-gray-100/50 p-4 space-y-3">
+            <h3 class="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-bank-red"></i> Симуляция для дипломной работы
+            </h3>
+            
+            <!-- Скрипт-Угонщик (Bot) -->
+            <label class="flex justify-between items-center p-3.5 bg-red-50/50 hover:bg-red-50 rounded-xl border border-red-100/50 cursor-pointer select-none active:scale-[0.99] transition-all">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center text-red-600">
+                        <i class="fa-solid fa-robot text-base"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-red-950">Скрипт-Угонщик (Bot)</div>
+                        <div class="text-[9px] text-red-700/80">Симуляция автоматической атаки</div>
+                    </div>
+                </div>
+                <div class="switch pointer-events-none">
+                    <input type="checkbox" id="bot-toggle">
+                    <span class="slider"></span>
+                </div>
+            </label>
+            
+            <!-- Телеметрия SDK -->
+            <label class="flex justify-between items-center p-3.5 bg-gray-50/50 hover:bg-gray-100 rounded-xl border border-gray-200/50 cursor-pointer select-none active:scale-[0.99] transition-all">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                        <i class="fa-solid fa-satellite-dish text-base"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-gray-800">Телеметрия SDK</div>
+                        <div class="text-[9px] text-gray-500">Показать вывод сенсоров устройства</div>
+                    </div>
+                </div>
+                <div class="switch pointer-events-none">
+                    <input type="checkbox" id="debug-toggle">
+                    <span class="slider slider-green"></span>
+                </div>
+            </label>
+        </div>
+
+        <!-- Панель вывода телеметрии -->
+        <div id="telemetry-panel" class="hidden mx-4 mt-3 p-4 bg-gray-950 text-emerald-400 telemetry-box rounded-2xl border border-gray-800/80 shadow-inner space-y-1.5">
+            <div class="font-bold text-white mb-2 pb-1.5 border-b border-gray-900 flex justify-between items-center">
+                <span class="flex items-center gap-1.5 text-[10px] tracking-wider uppercase font-bold text-gray-300">
+                    <i class="fa-solid fa-network-wired text-emerald-500 animate-pulse"></i> AI Telemetry SDK
+                </span>
+                <span id="ws-status" class="text-red-500 text-[9px] bg-red-950/50 border border-red-900/50 px-2 py-0.5 rounded-full font-extrabold uppercase">DISCONNECTED</span>
+            </div>
+            <div id="log-hw" class="flex justify-between text-gray-400"><span class="text-gray-500 font-medium">Device HW:</span><span>Scanning...</span></div>
+            <div id="log-gyro" class="flex justify-between text-gray-400"><span class="text-gray-500 font-medium">Gyroscope:</span><span>Requesting...</span></div>
+            <div id="log-keys" class="flex justify-between text-gray-400"><span class="text-gray-500 font-medium">Keys/Swipes:</span><span>0 | 0</span></div>
+            <div id="log-speed" class="flex justify-between text-gray-400"><span class="text-gray-500 font-medium">Swipe Speed:</span><span>0 px/ms</span></div>
+        </div>
+
+        <!-- Кнопка отправки перевода -->
+        <div class="p-4 mt-3">
+            <button id="send-btn" class="w-full bg-[#f14635] active:bg-[#d63022] hover:bg-red-600 text-white rounded-2xl py-4 text-base font-extrabold transition-all shadow-md shadow-red-500/10 active:scale-[0.99]">
+                Перевести 15 000 ₸
+            </button>
+        </div>
+    </div>
+
+    <!-- Нижняя навигация (Safe Area Adaptive) -->
+    <nav class="bg-white border-t border-gray-100 fixed bottom-0 w-full flex justify-around items-center ios-shadow z-20 pt-2" style="padding-bottom: env(safe-area-inset-bottom, 12px); min-height: 64px;">
+        <div class="flex flex-col items-center justify-center text-gray-400 gap-1 cursor-pointer flex-1 py-1">
+            <i class="fa-solid fa-house text-lg"></i>
+            <span class="text-[9px] font-bold tracking-wide">Главная</span>
+        </div>
+        <div class="flex flex-col items-center justify-center text-bank-red gap-1 cursor-pointer flex-1 py-1">
+            <i class="fa-solid fa-money-bill-transfer text-lg"></i>
+            <span class="text-[9px] font-bold tracking-wide">Переводы</span>
+        </div>
+        <div class="flex flex-col items-center justify-center text-gray-400 gap-1 cursor-pointer flex-1 py-1">
+            <i class="fa-solid fa-wallet text-lg"></i>
+            <span class="text-[9px] font-bold tracking-wide">Мой Банк</span>
+        </div>
+        <div class="flex flex-col items-center justify-center text-gray-400 gap-1 cursor-pointer flex-1 py-1">
+            <i class="fa-solid fa-comment-dots text-lg"></i>
+            <span class="text-[9px] font-bold tracking-wide">Сообщения</span>
+        </div>
+    </nav>
+
+    <!-- Модальное окно результатов AI-анализа -->
+    <div id="overlay" class="fixed inset-0 bg-black/60 z-40 hidden transition-opacity opacity-0 backdrop-blur-sm"></div>
+    <div id="ai-modal" class="bottom-sheet fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 p-6 flex flex-col items-center shadow-2xl">
+        <div class="w-12 h-1.5 bg-gray-200 rounded-full mb-6"></div>
+        <div id="modal-icon" class="text-6xl mb-4"></div>
+        <h3 id="modal-title" class="text-xl font-bold mb-2 text-center text-gray-800"></h3>
+        <p id="modal-desc" class="text-center text-gray-500 text-sm mb-6 max-w-xs leading-relaxed"></p>
+        <div id="modal-details" class="w-full bg-gray-50 rounded-2xl p-4 text-xs font-mono text-gray-600 hidden mb-6 border border-gray-100"></div>
+        <button onclick="closeModal()" class="w-full bg-gray-100 active:bg-gray-200 hover:bg-gray-200 text-gray-700 font-bold rounded-xl p-4 transition-colors">
+            Закрыть
+        </button>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + "/api/v1";
+        const API_KEY = "DEV-MASTER-KEY";
+        const USER_ID = "live_mobile_user_01";
+
+        // Синхронизация текста кнопки
+        document.getElementById('amount').addEventListener('input', (e) => {
+            const val = e.target.value || 0;
+            document.getElementById('send-btn').innerText = `Перевести ${Number(val).toLocaleString('ru-RU')} ₸`;
+        });
+
+        // ==========================================
+        // AI REAL-TIME SDK (ZERO-LATENCY WEBSOCKET ARCHITECTURE)
+        // ==========================================
+        class SentinelAntiFraudSDK {
+            constructor() {
+                this.swipes = [];
+                this.keystrokes = [];
+                this.gyroData = { alpha: 0, beta: 0, gamma: 0 };
+                this.hardware = this.getHardwareFingerprint();
+                
+                this.activeSwipe = null;
+                this.lastKeyTime = 0;
+                
+                // Real-time tracking
+                this.liveTouch = { x: null, y: null, force: 0 };
+                this.ws = null;
+                this.isConnected = false;
+
+                this.initListeners();
+            }
+
+            // 1. WebSocket Engine
+            connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/telemetry/client`;
+                
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    this.isConnected = true;
+                    const wsStatus = document.getElementById('ws-status');
+                    wsStatus.innerText = "ONLINE";
+                    wsStatus.className = "text-emerald-500 text-[9px] bg-emerald-950/50 border border-emerald-900/50 px-2 py-0.5 rounded-full font-extrabold uppercase";
+                };
+                
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    const wsStatus = document.getElementById('ws-status');
+                    wsStatus.innerText = "RECONNECTING...";
+                    wsStatus.className = "text-yellow-500 text-[9px] bg-yellow-950/50 border border-yellow-900/50 px-2 py-0.5 rounded-full font-extrabold uppercase animate-pulse";
+                    setTimeout(() => this.connectWebSocket(), 2000);
+                };
+                
+                this.ws.onerror = (err) => console.error('WS Error:', err);
+            }
+
+            // 2. Hardware
+            getHardwareFingerprint() {
+                return {
+                    cores: navigator.hardwareConcurrency || 'unknown',
+                    ram: navigator.deviceMemory || 'unknown',
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    screen: `${window.screen.width}x${window.screen.height}`
+                };
+            }
+
+            // 3. iOS 13+ Gyroscope Unlocker
+            async requestSensors() {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission === 'granted') {
+                            this.bindGyroscope();
+                        } else {
+                            console.warn('Gyroscope permission denied.');
+                        }
+                    } catch (e) {
+                        console.error('Error requesting gyro:', e);
+                    }
+                } else {
+                    this.bindGyroscope();
+                }
+            }
+
+            bindGyroscope() {
+                window.addEventListener('deviceorientation', (event) => {
+                    this.gyroData = {
+                        alpha: event.alpha || 0,
+                        beta: event.beta || 0,
+                        gamma: event.gamma || 0
+                    };
+                });
+            }
+
+            // 4. Input & Touch Listeners
+            initListeners() {
+                const inputs = document.querySelectorAll('input');
+                inputs.forEach(input => {
+                    input.addEventListener('keydown', () => { this.activeKey = Date.now(); });
+                    input.addEventListener('keyup', () => {
+                        if (this.activeKey) {
+                            this.keystrokes.push(Date.now() - this.activeKey);
+                            this.activeKey = null;
+                        }
+                    });
+                });
+
+                const zone = document.getElementById('swipe-zone');
+
+                zone.addEventListener('touchstart', (e) => {
+                    this.activeSwipe = {
+                        startT: Date.now(),
+                        startX: e.touches[0].clientX,
+                        startY: e.touches[0].clientY,
+                        pressure: e.touches[0].force || 0.5 
+                    };
+                    this.liveTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY, force: e.touches[0].force || 0.5 };
+                }, { passive: true });
+
+                // STREAMING
+                zone.addEventListener('touchmove', (e) => {
+                    this.liveTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY, force: e.touches[0].force || 0.5 };
+                }, { passive: true });
+
+                zone.addEventListener('touchend', (e) => {
+                    if (!this.activeSwipe) return;
+                    const duration = Date.now() - this.activeSwipe.startT;
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const length = Math.sqrt(Math.pow(endX - this.activeSwipe.startX, 2) + Math.pow(endY - this.activeSwipe.startY, 2));
+                    const velocity = duration > 0 ? length / duration : 0;
+
+                    if (length > 10) { 
+                        this.swipes.push({ duration, length, velocity, pressure: this.activeSwipe.pressure });
+                    }
+                    this.activeSwipe = null;
+                    this.liveTouch = { x: null, y: null, force: 0 };
+                }, { passive: true });
+            }
+
+            getStats(arr) {
+                if (!arr || arr.length === 0) return { mean: 0, std: 0, max: 0 };
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                const variance = arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length;
+                return { mean, std: Math.sqrt(variance), max: Math.max(...arr) };
+            }
+
+            generateSwipeFeatures(isBot) {
+                if (isBot) {
+                    return {
+                        duration_ms_mean: 2.0, duration_ms_std: 0.0001, duration_ms_max: 2.0,
+                        length_px_mean: 900.0, length_px_std: 0.0001, length_px_max: 900.0,
+                        velocity_mean: 450.0, velocity_std: 0.0001, velocity_max: 450.0,
+                        median_pressure_mean: 0.0, median_pressure_std: 0.0, median_pressure_max: 0.0,
+                        median_area_mean: 0.0, median_area_std: 0.0, median_area_max: 0.0
+                    };
+                }
+                const dStats = this.getStats(this.swipes.map(s => s.duration));
+                const lStats = this.getStats(this.swipes.map(s => s.length));
+                const vStats = this.getStats(this.swipes.map(s => s.velocity));
+                const pStats = this.getStats(this.swipes.map(s => s.pressure));
+
+                return {
+                    duration_ms_mean: dStats.mean || 250.0, duration_ms_std: dStats.std || 10.0, duration_ms_max: dStats.max || 300.0,
+                    length_px_mean: lStats.mean || 400.0, length_px_std: lStats.std || 15.0, length_px_max: lStats.max || 450.0,
+                    velocity_mean: vStats.mean || 1.5, velocity_std: vStats.std || 0.2, velocity_max: vStats.max || 2.0,
+                    median_pressure_mean: pStats.mean || 0.5, median_pressure_std: pStats.std || 0.05, median_pressure_max: pStats.max || 0.6,
+                    median_area_mean: 5.0, median_area_std: 0.5, median_area_max: 6.0
+                };
+            }
+
+            generateBiometricSensors(isBot) {
+                if (isBot) {
+                    return { gyroscope_x_y_z: [0.0, 0.0, 0.0], keystroke_entropy: 0.0, touch_pressure_variance: 0.0 };
+                }
+                return {
+                    gyroscope_x_y_z: [this.gyroData.beta, this.gyroData.gamma, this.gyroData.alpha],
+                    keystroke_entropy: this.getStats(this.keystrokes).std || 0.1,
+                    touch_pressure_variance: this.getStats(this.swipes.map(s => s.pressure)).std || 0.01
+                };
+            }
+
+            // 5. Firehose Streaming
+            streamData(isBot) {
+                this.updateUI();
+                
+                if (!this.isConnected || !this.ws) return;
+
+                const payload = this.generateBiometricSensors(isBot);
+                payload.behavioral_features = {
+                    velocity_mean: this.getStats(this.swipes.map(s => s.velocity)).mean || 0,
+                    length_px_mean: this.getStats(this.swipes.map(s => s.length)).mean || 0,
+                    keys_count: this.keystrokes.length,
+                    swipes_count: this.swipes.length
+                };
+                payload.network = {
+                    user_agent: navigator.userAgent, screen: this.hardware.screen, platform: this.hardware.platform,
+                    cores: this.hardware.cores, ram: this.hardware.ram
+                };
+                payload.live_touch = this.liveTouch;
+
+                this.ws.send(JSON.stringify(payload)); 
+            }
+
+            updateUI() {
+                document.getElementById('log-hw').innerHTML = `<span class="text-gray-500 font-medium">Device HW:</span><span>CPUx${this.hardware.cores} | RAM: ${this.hardware.ram}GB | ${this.hardware.platform}</span>`;
+                document.getElementById('log-gyro').innerHTML = `<span class="text-gray-500 font-medium">Gyroscope:</span><span>α:${this.gyroData.alpha.toFixed(0)}° β:${this.gyroData.beta.toFixed(0)}° γ:${this.gyroData.gamma.toFixed(0)}°</span>`;
+                document.getElementById('log-keys').innerHTML = `<span class="text-gray-500 font-medium">Keys/Swipes:</span><span>Keys: ${this.keystrokes.length} | Swipes: ${this.swipes.length}</span>`;
+                if (this.swipes.length > 0) {
+                    document.getElementById('log-speed').innerHTML = `<span class="text-gray-500 font-medium">Swipe Speed:</span><span>${this.swipes[this.swipes.length-1].velocity.toFixed(2)} px/ms</span>`;
+                }
+            }
+        }
+
+        // Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js');
+            });
+        }
+
+        // ==========================================
+        // INITIALIZATION & LOGIC
+        // ==========================================
+        const SentinelSDK = new SentinelAntiFraudSDK();
+
+        // Unlock overlay
+        document.getElementById('unlock-btn').addEventListener('click', async () => {
+            await SentinelSDK.requestSensors();
+            SentinelSDK.connectWebSocket();
+            document.getElementById('sensor-unlock-overlay').style.display = 'none';
+            
+            // Start the 30ms Firehose
+            setInterval(() => {
+                const isBot = document.getElementById('bot-toggle').checked;
+                SentinelSDK.streamData(isBot);
+            }, 30);
+        });
+
+        // Debug panel visibility
+        document.getElementById('debug-toggle').addEventListener('change', (e) => {
+            document.getElementById('telemetry-panel').classList.toggle('hidden', !e.target.checked);
+        });
+
+        // UI Modal Helpers
+        const overlay = document.getElementById('overlay');
+        const modal = document.getElementById('ai-modal');
+        function openModal() {
+            overlay.classList.remove('hidden');
+            setTimeout(() => { overlay.classList.remove('opacity-0'); modal.classList.add('open'); }, 10);
+        }
+        function closeModal() {
+            modal.classList.remove('open'); overlay.classList.add('opacity-0');
+            setTimeout(() => overlay.classList.add('hidden'), 300);
+        }
+
+        // Transaction Execution
+        document.getElementById('send-btn').addEventListener('click', async () => {
+            const isBot = document.getElementById('bot-toggle').checked;
+            const amount = parseFloat(document.getElementById('amount').value) || 0;
+
+            if (!isBot && SentinelSDK.swipes.length < 1) {
+                alert("Пожалуйста, сделайте пару свайпов по экрану для симуляции реального пользователя.");
+                return;
+            }
+
+            document.getElementById('modal-icon').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-bank-red"></i>';
+            document.getElementById('modal-title').innerText = "Перевод...";
+            document.getElementById('modal-title').className = "text-xl font-extrabold mb-2 text-center text-gray-800";
+            document.getElementById('modal-desc').innerText = "Sentinel AI анализирует транзакцию...";
+            document.getElementById('modal-details').classList.add('hidden');
+            openModal();
+
+            try {
+                // Endpoint 1: Behavior
+                await fetch(`${API_URL}/score-behavior`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-KEY': API_KEY },
+                    body: JSON.stringify({ user_id: USER_ID, features: SentinelSDK.generateSwipeFeatures(isBot) })
+                });
+
+                // Endpoint 2: Transaction Fusion
+                const response = await fetch(`${API_URL}/score-transaction`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-KEY': API_KEY },
+                    body: JSON.stringify({
+                        transaction_id: "TXN-" + Math.floor(Math.random() * 900000 + 100000),
+                        user_id: USER_ID,
+                        amount_kzt: amount,
+                        source: "MOBILE_APP",
+                        network: {
+                            ip_address: "192.168.1.15", 
+                            ja3_fingerprint: "a".repeat(32),
+                            user_agent: navigator.userAgent,
+                            is_vpn_or_proxy: isBot 
+                        },
+                        biometrics: SentinelSDK.generateBiometricSensors(isBot),
+                        session_trust_score: isBot ? 0.01 : 0.99, 
+                        timestamp_utc: new Date().toISOString()
+                    })
+                });
+
+                const result = await response.json();
+                
+                document.getElementById('modal-details').classList.remove('hidden');
+                const riskPct = (result.fraud_probability * 100).toFixed(1);
+                const trigger = result.reason_codes.length > 0 ? result.reason_codes.join(", ") : "Риск в пределах нормы";
+
+                if (result.action === "ALLOW") {
+                    document.getElementById('modal-icon').innerHTML = '<i class="fa-solid fa-circle-check text-green-500 text-6xl"></i>';
+                    document.getElementById('modal-title').innerText = "Перевод отправлен";
+                    document.getElementById('modal-desc').innerText = "Безопасная транзакция";
+                    document.getElementById('modal-details').innerHTML = `<span class="text-green-600 font-bold">Риск: ${riskPct}%</span><br>SLA: ${result.processing_time_ms}ms<br>Причина: ${trigger}`;
+                    document.getElementById('balance').innerText = (1250400 - amount).toLocaleString('ru-RU') + " ₸";
+                    SentinelSDK.swipes = []; SentinelSDK.keystrokes = [];
+                } else if (result.action === "CHALLENGE") {
+                    document.getElementById('modal-icon').innerHTML = '<i class="fa-solid fa-fingerprint text-yellow-500 text-6xl"></i>';
+                    document.getElementById('modal-title').innerText = "Подтвердите перевод";
+                    document.getElementById('modal-desc').innerText = "Замечена нетипичная активность";
+                    document.getElementById('modal-details').innerHTML = `<span class="text-yellow-600 font-bold">Риск: ${riskPct}%</span><br>SLA: ${result.processing_time_ms}ms<br>Причина: ${trigger}`;
+                } else {
+                    document.getElementById('modal-icon').innerHTML = '<i class="fa-solid fa-triangle-exclamation text-bank-red text-6xl"></i>';
+                    document.getElementById('modal-title').innerText = "Перевод заблокирован!";
+                    document.getElementById('modal-title').className = "text-xl font-bold mb-2 text-center text-bank-red";
+                    document.getElementById('modal-desc').innerText = "Система предотвратила кражу средств.";
+                    document.getElementById('modal-details').innerHTML = `<span class="text-bank-red font-bold">Угроза: ${riskPct}%</span><br>SLA: ${result.processing_time_ms}ms<br>Причина: ${trigger}`;
+                }
+            } catch (e) {
+                document.getElementById('modal-icon').innerHTML = '<i class="fa-solid fa-wifi text-gray-400 text-6xl"></i>';
+                document.getElementById('modal-title').innerText = "Ошибка соединения";
+                document.getElementById('modal-desc').innerText = "Проверьте подключение к интернету";
+            }
+        });
+
+        // ==========================================
+        // БЛОКИРОВКА PULL-TO-REFRESH В WEBVIEW
+        // ==========================================
+        const swipeZone = document.getElementById('swipe-zone');
+        let touchStartY = 0;
+
+        swipeZone.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        swipeZone.addEventListener('touchmove', (e) => {
+            const touchY = e.touches[0].clientY;
+            const touchDiff = touchY - touchStartY;
+            
+            // Если мы в самом верху прокрутки и тянем вниз - предотвращаем событие
+            if (swipeZone.scrollTop === 0 && touchDiff > 0) {
+                if (e.cancelable) e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
